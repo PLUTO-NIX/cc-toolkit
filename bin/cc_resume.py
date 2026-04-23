@@ -155,20 +155,26 @@ def show_pick() -> tuple[str, str] | None:
 
 
 def find_session_jsonl(project_path: Path, session_id: str) -> Path | None:
-    """세션 ID로 JSONL 파일 찾기."""
-    jsonl_dir = hash_to_jsonl_dir(project_path)
-    if not jsonl_dir.exists():
-        return None
+    """세션 ID로 JSONL 파일 찾기. cwd 해시 → 상위 폴더 해시 순으로 탐색."""
+    # cwd 자체 + 상위 폴더들에서 탐색 (cc-link가 상위 폴더로 등록된 경우 대응)
+    search_paths = [project_path]
+    for parent in project_path.parents:
+        search_paths.append(parent)
+        if parent == Path.home() or len(search_paths) > 5:
+            break
 
-    # 정확한 매치
-    exact = jsonl_dir / f"{session_id}.jsonl"
-    if exact.exists():
-        return exact
+    for p in search_paths:
+        jsonl_dir = hash_to_jsonl_dir(p)
+        if not jsonl_dir.exists():
+            continue
 
-    # 접두사 매치 (짧은 ID)
-    for f in jsonl_dir.glob("*.jsonl"):
-        if f.stem.startswith(session_id):
-            return f
+        exact = jsonl_dir / f"{session_id}.jsonl"
+        if exact.exists():
+            return exact
+
+        for f in jsonl_dir.glob("*.jsonl"):
+            if f.stem.startswith(session_id):
+                return f
 
     return None
 

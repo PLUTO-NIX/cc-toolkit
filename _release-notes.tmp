@@ -1,0 +1,11 @@
+## 새 기능
+- SessionEnd Hook: 세션 종료 시 cmux 탭 제목을 경로로 자동 초기화
+- cmux 탭 제목 양방향 동기화
+
+## 변경
+- cmux 내장 claude-hook과의 탭 제목 충돌 해결 (스피너 "⠐ Claude Code" 감지)
+- Stop Hook 탭 제목 설정에 2초 지연 추가
+- cc-progress 관련 코드 전면 제거
+
+## 수정
+- `_is_system_title`이 cmux의 "⠐ Claude Code"를 사용자 수정으로 오인하던 버그
