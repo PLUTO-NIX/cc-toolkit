@@ -28,7 +28,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bin"))
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # hooks/ 자신도 추가 (progress_updater import용)
 from common import (
     dropbox_sync_dir,
     extract_messages,
@@ -304,71 +303,6 @@ def update_layout(
     LAYOUT_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-    """JSONL에서 최근 활동을 추출하여 진행 상황 마크다운을 갱신."""
-    try:
-        entries = parse_jsonl(jsonl_path)
-        messages = extract_messages(entries)
-    except Exception:
-        return
-
-    if not messages:
-        return
-
-    # 최근 도구 사용 요약 (마지막 20개 메시지에서)
-    recent = messages[-20:]
-    tools_used = []
-    last_assistant = ""
-    user_count = 0
-    assistant_count = 0
-
-    for m in recent:
-        if m.role == "tool_use":
-            tools_used.append(m.text)
-        elif m.role == "assistant":
-            last_assistant = m.text
-            assistant_count += 1
-        elif m.role == "user":
-            user_count += 1
-
-    # 전체 통계
-    total_user = sum(1 for m in messages if m.role == "user")
-    total_assistant = sum(1 for m in messages if m.role == "assistant")
-    total_tools = sum(1 for m in messages if m.role == "tool_use")
-
-    # 마지막 assistant 응답에서 체크리스트 추출 (있으면)
-    checklist = ""
-    for m in reversed(messages):
-        if m.role == "assistant" and ("- [" in m.text or "- [ ]" in m.text):
-            # 체크리스트가 포함된 응답 찾기
-            lines = m.text.split("\n")
-            checks = [l for l in lines if l.strip().startswith("- [")]
-            if checks:
-                checklist = "\n".join(checks[:10])
-            break
-
-    # 마크다운 생성
-    md_lines = [f"# {title}"]
-
-    # 마지막 Claude 발언 요약 (200자)
-    if last_assistant:
-        summary = re.sub(r"\s+", " ", last_assistant)[:200]
-        md_lines.append(f"\n## 마지막 활동\n{summary}")
-
-    # 체크리스트가 있으면 표시
-    if checklist:
-        md_lines.append(f"\n## 진행 상황\n{checklist}")
-
-    # 최근 도구 사용
-    if tools_used:
-        md_lines.append("\n## 최근 도구 사용")
-        for t in tools_used[-5:]:
-            md_lines.append(f"- {t}")
-
-    # 통계
-    md_lines.append(f"\n## 통계\n- 사용자: {total_user}턴 / Claude: {total_assistant}턴 / 도구: {total_tools}회")
-
-    progress_file.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
-
 
 def _is_system_title(title: str) -> bool:
     """cmux/터미널이 자동으로 설정하는 제목인지 판별."""
@@ -377,11 +311,15 @@ def _is_system_title(title: str) -> bool:
     # 경로
     if title.startswith(("~/", "/", ".")):
         return True
-    # 명령어/프로세스 이름
-    if title.startswith(("cmux", "claude", "cc-", "python", "bash", "zsh", "vim", "nvim")):
+    # 명령어/프로세스 이름 (소문자 비교)
+    lower = title.lower().strip()
+    if lower.startswith(("cmux", "claude", "cc-", "python", "bash", "zsh", "vim", "nvim")):
         return True
     # cmux 기본
     if title in ("~", "새 세션", "(제목 없음)", "(진행 중)"):
+        return True
+    # cmux claude-hook이 설정하는 제목 (스피너 문자 + "Claude Code")
+    if "Claude Code" in title or "claude code" in lower:
         return True
     return False
 
@@ -413,6 +351,15 @@ def main() -> None:
     pane_index = get_pane_index(pane_ref, workspace_ref) if pane_ref else None
     workspace_name = get_workspace_name(workspace_ref) if workspace_ref else "default"
 
+    if event == "end":
+        # ── SessionEnd ── 세션 종료 시 탭 제목을 cmux 기본값으로 초기화
+        if surface_ref:
+            import time
+            time.sleep(1.5)
+            # 빈 문자열로 초기화 (cmux가 기본값으로 돌림)
+            set_cmux_tab_title(surface_ref, cwd.replace(str(Path.home()), "~"))
+        return
+
     if event == "start":
         # ── SessionStart ──
         # 1. 레이아웃 즉시 기록 (강제 종료 대비)
@@ -426,14 +373,6 @@ def main() -> None:
 
         # 탭 제목은 Stop Hook에서 설정 (cc-restore가 미리 설정한 제목을 덮어쓰지 않기 위해)
 
-        # 3. 진행 상황 파일 생성 (패널은 cc-progress로 수동 열기)
-        #    progress_updater.py가 제목 기반 파일명으로 관리
-        progress_file = Path(f"/tmp/cmux-progress-{session_id}.md")
-        if not progress_file.exists():
-            progress_file.write_text(
-                "# 진행 상황\n대기 중... (작업이 시작되면 자동 갱신)\n",
-                encoding="utf-8",
-            )
 
     else:
         # ── Stop ──
@@ -480,13 +419,11 @@ def main() -> None:
         sessions_path = (dropbox_slot / "sessions.json") if dropbox_slot else (project_root / ".claude-sessions.json")
         update_sessions(sessions_path, session_id, title, cwd)
 
-        # 5. cmux 탭 제목 동기화
+        # 5. cmux 탭 제목 동기화 (cmux 내장 hook이 "Claude Code"로 덮어쓰므로 지연)
         if surface_ref and title:
+            import time
+            time.sleep(2)
             set_cmux_tab_title(surface_ref, title[:40])
-
-        # 진행 상황 파일 갱신은 별도 progress_updater로 처리 (선택적)
-        except Exception:
-            pass  # progress 갱신 실패해도 나머지 기능에 영향 없음
 
 
 if __name__ == "__main__":

@@ -21,35 +21,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from common import mux_run, mux_notify
 
-PROGRESS_DIR = Path("/tmp")
-MAPPING_FILE = Path.home() / ".cc-toolkit" / "cache" / "progress-mapping.json"
-
-
-def find_progress_file(session_id: str) -> Path | None:
-    """세션의 progress 파일을 찾는다. 항상 ID 기반."""
-    id_file = PROGRESS_DIR / f"cmux-progress-{session_id}.md"
-    if id_file.exists():
-        return id_file
-    return None
-
-
-def attach_progress_tab(target_pane: str, session_id: str) -> None:
-    """progress 마크다운을 해당 pane에 탭으로 추가."""
-    pf = find_progress_file(session_id)
-    if not pf:
-        return
-    # 1. 마크다운 열기 (새 pane에 생성)
-    result = mux_run(["markdown", "open", str(pf)], check=False)
-    if result.returncode != 0:
-        return
-    # 2. surface ref 추출
-    sf_match = re.search(r"surface=(\S+)", result.stdout)
-    if not sf_match:
-        return
-    md_surface = sf_match.group(1)
-    # 3. target pane으로 이동 (탭으로)
-    mux_run(["move-surface", "--surface", md_surface, "--pane", target_pane], check=False)
-
 LAYOUT_PATH = Path.home() / ".cc-toolkit" / "cache" / "cmux-layout.json"
 
 
@@ -239,7 +210,6 @@ def restore(layout: dict, target_ws: str | None = None, dry_run: bool = False) -
         return
 
     restore_panes = panes[:len(surface_refs)]
-    deferred_session_id = ""
 
     for i, pane in enumerate(restore_panes):
         session_id = pane.get("session_id", "")
@@ -255,7 +225,6 @@ def restore(layout: dict, target_ws: str | None = None, dry_run: bool = False) -
         if target == my_surface:
             deferred_cmd = cmd
             deferred_title = title
-            deferred_session_id = session_id
             total += 1
             continue
 
@@ -263,8 +232,6 @@ def restore(layout: dict, target_ws: str | None = None, dry_run: bool = False) -
         if title:
             mux_run(["rename-tab", "--surface", target, title[:40]], check=False)
         # progress 탭 추가
-        if target_pane:
-            attach_progress_tab(target_pane, session_id)
         total += 1
 
     # 나머지 워크스페이스 안내
@@ -286,8 +253,6 @@ def restore(layout: dict, target_ws: str | None = None, dry_run: bool = False) -
             my_pane = ident.get("caller", {}).get("pane_ref", "")
         except Exception:
             pass
-        if my_pane and deferred_session_id:
-            attach_progress_tab(my_pane, deferred_session_id)
         print(f"\n✅ {ws_name}: {total}개 pane 복원")
         os.execvp("bash", ["bash", "-c", deferred_cmd])
     else:
