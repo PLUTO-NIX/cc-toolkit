@@ -4,6 +4,16 @@ updated: 2026-04-23 18:34:39 +09:00
 ---
 # Changelog
 
+## [0.2.2] - 2026-09-07
+
+### 변경
+- `common.py`의 `mux_send()`에 `workspace_id` 선택 인자 추가. 명시하면 `cmux send --workspace {id} --surface {id}`로 전송해 caller와 다른 워크스페이스의 surface에도 보낼 수 있다. cmux는 caller가 있는 pane에서 다른 워크스페이스로의 send를 차단하는데(`Surface is not a terminal`), `--workspace`를 명시하면 통과한다. Agent Teams lead의 Bash에서 다른 워크스페이스에 세션 시작 명령을 보내기 위해 추가됐다. 기존 호출 방식은 그대로 동작한다.
+- `bin/cc-link`, `bin/cc-restore`, `bin/cc-resume` 런처 셸 스크립트에 실행 권한(755) 부여. `install.sh`가 설치 시 `chmod +x`를 하므로 설치된 환경의 동작은 바뀌지 않는다.
+
+### 제거
+- `_release-notes.tmp`: v0.2.0 릴리즈 노트 임시 파일이 레포에 잘못 커밋돼 있던 것을 제거
+- `bin/.gitkeep`, `hooks/.gitkeep`: 두 디렉토리에 실제 파일이 있어 placeholder가 불필요
+
 ## [0.2.1] - 2026-04-23
 
 ### 수정

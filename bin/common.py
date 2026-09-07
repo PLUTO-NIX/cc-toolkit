@@ -227,9 +227,17 @@ def mux_new_workspace(name: str, cwd: str | None = None) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def mux_send(text: str, surface_id: str | None = None) -> bool:
-    """터미널에 텍스트 전송."""
+def mux_send(text: str, surface_id: str | None = None,
+             workspace_id: str | None = None) -> bool:
+    """터미널에 텍스트 전송.
+
+    workspace_id를 명시하면 cross-workspace send가 가능하다.
+    Agent Teams 환경에서 caller와 다른 워크스페이스의 surface에
+    보내려면 반드시 --workspace를 지정해야 한다.
+    """
     args = ["send"]
+    if workspace_id:
+        args.extend(["--workspace", workspace_id])
     if surface_id:
         args.extend(["--surface", surface_id])
     args.append(text)
